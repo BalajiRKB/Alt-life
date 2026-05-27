@@ -5,6 +5,29 @@ const apiKeyAuth = require('../middleware/apiKey');
 
 router.use(apiKeyAuth);
 
+// GET /issuance/pending?date=YYYY-MM-DD
+// Returns all books that are still issued (not returned) as of the given date
+router.get('/pending', async (req, res) => {
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  try {
+    const result = await pool.query(
+      `SELECT m.name AS member_name, b.title AS book_title,
+              i.issued_date, i.target_return_date, b.author
+       FROM issuances i
+       JOIN members m ON i.member_id = m.id
+       JOIN books b ON i.book_id = b.id
+       WHERE i.status = 'issued'
+         AND i.issued_date <= $1
+         AND (i.actual_return_date IS NULL OR i.actual_return_date > $1)
+       ORDER BY i.target_return_date ASC`,
+      [date]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /issuance
 router.get('/', async (req, res) => {
   try {
@@ -39,7 +62,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /issuance - issue a book to a member
+// POST /issuance
 router.post('/', async (req, res) => {
   const { member_id, book_id, issued_date, target_return_date } = req.body;
   if (!member_id || !book_id || !target_return_date) {
@@ -57,7 +80,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /issuance/:id - update issuance (e.g. mark as returned)
+// PUT /issuance/:id
 router.put('/:id', async (req, res) => {
   const { actual_return_date, status } = req.body;
   try {
